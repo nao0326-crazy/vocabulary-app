@@ -170,7 +170,7 @@ const words = [
   {
     "english": "mind",
     "japanese": "心、精神"
-  }
+  },
   {
     "english": "broaden",
     "japanese": "（幅を）広げる、深める、広がる"
