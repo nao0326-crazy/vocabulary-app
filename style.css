@@ -1,0 +1,386 @@
+body {
+    font-family: sans-serif;
+    background: #f5f5f5;
+    text-align: center;
+    margin: 0;
+}
+
+/* ---------- ヘッダー（Export / Import / 統計） ---------- */
+
+.app-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 8px 12px;
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    position: relative;
+}
+
+.menu-toggle {
+    display: none;
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 22px;
+    padding: 6px 12px;
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.header-actions button {
+    margin: 0;
+    font-size: 14px;
+    padding: 8px 16px;
+}
+
+/* デスクトップ: 右側の縦型サイドレールに移動して横余白を活用 */
+@media (min-width: 601px) {
+    .header-actions {
+        position: fixed;
+        right: 12px;
+        top: 12px;
+        flex-direction: column;
+        background: transparent;
+        padding: 8px;
+        gap: 8px;
+        z-index: 300;
+        align-items: center;
+    }
+
+    .header-actions button {
+        display: block;
+        width: 140px;
+        text-align: center;
+    }
+
+    /* メインコンテナの幅を右側のサイドレール分だけ狭める */
+    .container {
+        width: min(500px, calc(100% - 220px));
+        margin: 8px auto 60px;
+        padding: 0 12px;
+        box-sizing: border-box;
+    }
+}
+
+/* スマホ: メニュー内に収納 */
+@media (max-width: 600px) {
+    .menu-toggle {
+        display: block;
+    }
+
+    .app-header {
+        justify-content: center;
+        min-height: 48px;
+    }
+
+    .header-actions {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        left: 0;
+        flex-direction: column;
+        background: #fff;
+        border-bottom: 1px solid #ddd;
+        padding: 12px;
+        z-index: 100;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .header-actions.is-open {
+        display: flex;
+    }
+
+    .header-actions button {
+        width: 100%;
+    }
+}
+
+/* ---------- メインコンテナ ---------- */
+
+.container {
+    width: min(500px, 100%);
+    margin: 8px auto 40px;
+    padding: 0 12px;
+    box-sizing: border-box;
+}
+
+h1 { margin-top: 0; }
+
+/* トップ行: タイトル、モード、統計、進捗を横並びに表示 */
+.top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.top-row .left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.top-row .right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.mode-bar { margin: 0; font-size: 16px; }
+.mode-bar select { font-size: 16px; padding: 6px 10px; margin-left: 8px; max-width: 220px; }
+
+#stats { font-size: 16px; margin: 0; }
+#progress { font-size: 16px; color: #555; margin: 0; }
+
+#direction { font-size: 16px; color: #0066cc; margin-bottom: 12px; font-weight: bold; }
+
+/* モバイルでは縦並び */
+@media (max-width: 600px) {
+    .top-row { flex-direction: column; align-items: flex-start; }
+    .top-row .right { width: 100%; display:flex; justify-content:space-between; }
+    .mode-bar select { max-width: 100%; }
+}
+
+.question-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    margin: 8px 0;
+    position: relative;
+}
+
+.question-row {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:12px;
+    margin: 0 0 18px 0;
+}
+
+#question {
+    font-size: 36px;
+    margin:0;
+    word-break:break-word;
+    font-weight:700;
+    text-align:center;
+}
+
+.favorite-btn {
+    font-size: 22px;
+    padding:6px 10px;
+    background:none;
+    border:1px solid #eee;
+    border-radius: 8px;
+    cursor:pointer;
+    line-height:1;
+    position:absolute;
+    top:18px;
+    right:18px;
+}
+
+.favorite-btn.is-favorite {
+    color:#f5a623;
+    border-color:#f5a623;
+}
+
+#timer {
+    font-size:20px;
+    color:#c0392b;
+    text-align:center;
+    margin-bottom:8px;
+}
+
+#answer {
+    width: 100%;
+    max-width: 560px;
+    font-size:20px;
+    padding:12px 16px;
+    border-radius:8px;
+    border:1px solid #e6e6e6;
+    box-sizing:border-box;
+    display:block;
+    margin: 8px auto;
+}
+
+button#submit {
+    margin-top:12px;
+    font-size:16px;
+    padding:10px 24px;
+    cursor:pointer;
+    background:#a03934; color:#fff;
+    border:none;
+    border-radius:8px;
+    display:block;
+    margin-left:auto;
+    margin-right:auto;
+}
+
+#result {
+    margin-top:18px;
+    font-size:18px;
+    white-space:pre-line;
+    background:#e8f6ef;
+    padding:14px;
+    border-radius:8px;
+    color:#0a6b3b;
+    max-width: 720px;
+    margin-left:auto;
+    margin-right:auto;
+}
+
+.review-buttons {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+}
+
+.review-buttons button {
+    margin: 0;
+    font-size: 16px;
+    padding: 10px 18px;
+}
+
+.import-error {
+    margin-top: 16px;
+    padding: 12px;
+    background: #ffe0e0;
+    color: #c00;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ---------- 統計パネル ---------- */
+
+.stats-panel {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.stats-panel-inner {
+    background: #fff;
+    border-radius: 8px;
+    width: min(720px, 100%);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    overflow: hidden;
+}
+
+.stats-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.stats-panel-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.stats-panel-header button {
+    margin: 0;
+    font-size: 24px;
+    padding: 0 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.stats-sort-bar {
+    padding: 12px 20px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+}
+
+.stats-sort-bar select {
+    margin-left: 8px;
+    font-size: 14px;
+    padding: 4px 8px;
+}
+
+.stats-table-wrap {
+    overflow: auto;
+    flex: 1;
+    padding: 0 12px 16px;
+}
+
+#statsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+#statsTable th,
+#statsTable td {
+    padding: 8px 6px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+}
+
+#statsTable th {
+    background: #f9f9f9;
+    position: sticky;
+    top: 0;
+}
+
+#statsTable .col-fav {
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+@media (max-width: 600px) {
+    #question {
+        font-size: 28px;
+    }
+
+    .mode-bar select {
+        max-width: 160px;
+    }
+}
+
+/* Body classes added by script.js: is-mobile / is-desktop */
+body.is-mobile {
+    /* larger touch targets on mobile */
+    font-size: 110%;
+}
+body.is-mobile button#submit {
+    padding: 14px 28px;
+    font-size: 18px;
+}
+body.is-desktop #question {
+    /* slightly larger on desktop */
+    font-size: 40px;
+}
+/* Ensure header menu toggle is visible on mobile class if JS detected mobile */
+body.is-mobile .menu-toggle { display: block; }
+body.is-desktop .menu-toggle { display: none; }
