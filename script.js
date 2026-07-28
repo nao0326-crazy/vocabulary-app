@@ -1377,6 +1377,15 @@ const App = {
 
         this.storageData = StorageManager.load();
 
+        // Detect mobile vs desktop and add body classes for UI tweaks
+        try {
+            const isMobile = (typeof window !== 'undefined') && (
+                // pointer coarse (touch) OR small viewport width
+                (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth && window.innerWidth <= 600)
+            );
+            if (isMobile) document.body.classList.add('is-mobile'); else document.body.classList.add('is-desktop');
+        } catch (e) { /* ignore */ }
+
             // Supabase側のword_statsがあればローカルに同期（Supabase優先）
         try {
                 if (typeof this.syncWordStatsFromSupabase === 'function') {
@@ -1485,6 +1494,35 @@ const App = {
                  } catch (e) { /* ignore */ }
              });
 
+             // Additional mobile-friendly events: some mobile virtual keyboards do not emit keydown/composition in the same way.
+             // Listen for beforeinput/touchstart/pointerdown to catch typing start on mobile devices.
+             UIManager.elements.answer.addEventListener('beforeinput', (e) => {
+                 if (this.isAnswering) return;
+                 try {
+                     this._pauseTimestamp = this._pauseTimestamp || Date.now();
+                     TimerManager.stop();
+                     this._clearTypingTimeout();
+                 } catch (err) { /* ignore */ }
+             });
+
+             UIManager.elements.answer.addEventListener('touchstart', (e) => {
+                 if (this.isAnswering) return;
+                 try {
+                     this._pauseTimestamp = this._pauseTimestamp || Date.now();
+                     TimerManager.stop();
+                     this._clearTypingTimeout();
+                 } catch (err) { /* ignore */ }
+             }, { passive: true });
+
+             UIManager.elements.answer.addEventListener('pointerdown', (e) => {
+                 if (this.isAnswering) return;
+                 try {
+                     this._pauseTimestamp = this._pauseTimestamp || Date.now();
+                     TimerManager.stop();
+                     this._clearTypingTimeout();
+                 } catch (err) { /* ignore */ }
+             });
+
              // 入力からフォーカスが外れたら即座にタイマーを再開（残り時間を維持）
              UIManager.elements.answer.addEventListener('blur', () => {
                  if (this.isAnswering) return;
@@ -1518,6 +1556,30 @@ const App = {
                  this.startNewQuiz(mode);
              });
          }
+
+         // Mobile menu toggle: show/hide header-actions (used on small screens where header buttons are hidden)
+         try {
+             const menuToggle = document.getElementById('menuToggle');
+             const headerActions = document.getElementById('headerActions');
+             if (menuToggle && headerActions) {
+                 menuToggle.addEventListener('click', (e) => {
+                     e.stopPropagation();
+                     headerActions.classList.toggle('is-open');
+                     const expanded = headerActions.classList.contains('is-open');
+                     menuToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                 });
+
+                 // Close the menu when tapping outside on mobile
+                 document.addEventListener('click', (e) => {
+                     if (!headerActions.classList.contains('is-open')) return;
+                     if (e.target === menuToggle) return;
+                     if (!headerActions.contains(e.target)) {
+                         headerActions.classList.remove('is-open');
+                         menuToggle.setAttribute('aria-expanded', 'false');
+                     }
+                 });
+             }
+         } catch (e) { /* ignore */ }
 
          // エクスポートボタン
          const exportBtn = document.getElementById('exportBtn');
