@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英単語アプリ</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Supabase config (put your anon public key here) -->
+    <script>
+        window.SUPABASE_URL = 'https://simghlfrqspeuipzpdrf.supabase.co';
+        window.SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbWdobGZycXNwZXVpcHpwZHJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNDk4MTgsImV4cCI6MjEwMDgyNTgxOH0.BCzpBaH4VsDGCxzveuKREFrADD4_c5jKBUl9WxEM2PQ'
+    </script>
+    <!-- Load Supabase UMD bundle from CDN (exposes window.supabase.createClient) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+    <button id="menuToggle" class="menu-toggle" aria-label="メニュー">☰</button>
+    <div id="headerActions" class="header-actions">
+        <div id="authArea" class="auth-area">
+            <img id="userAvatar" class="user-avatar hidden" alt="user avatar" src="" />
+            <span id="userName" class="user-name"></span>
+            <button id="loginBtn" type="button">Googleでログイン</button>
+            <button id="logoutBtn" type="button" class="hidden">ログアウト</button>
+            <span id="syncStatus" class="sync-status">オフライン</span>
+        </div>
+        <button id="statsBtn" type="button">統計</button>
+        <button id="exportBtn" type="button">Export</button>
+    </div>
+</header>
+
+<div class="container">
+
+    <div class="top-row">
+        <div class="left">
+            <h1>英単語テスト</h1>
+            <div class="mode-bar">
+                <label for="quizMode">出題モード:</label>
+                <select id="quizMode">
+                    <option value="all">全問題</option>
+                    <option value="weak">苦手単語のみ</option>
+                    <option value="graduated">卒業済み単語のみ</option>
+                    <option value="unlearned">未学習単語のみ</option>
+                    <option value="favorite">お気に入りのみ</option>
+                    <option value="random50">ランダム50問</option>
+                    <option value="random100">ランダム100問</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="right">
+            <div id="stats">
+                正解: <span id="correctCount">0</span>
+                不正解: <span id="wrongCount">0</span>
+                正答率: <span id="accuracy">0%</span>
+            </div>
+
+            <div id="progress">
+                問題 <span id="currentNumber">0</span> / <span id="totalNumber">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="direction">—</div>
+
+    <div id="timer">5</div>
+
+    <div class="question-row">
+        <div id="question">Loading...</div>
+        <button id="favoriteBtn" type="button" class="favorite-btn" title="お気に入り切替" aria-label="お気に入り">☆</button>
+    </div>
+
+    <input
+        type="text"
+        id="answer"
+        placeholder="意味を入力"
+        autocomplete="off">
+
+    <br>
+
+    <button id="submit" type="button">回答</button>
+
+    <div id="result"></div>
+    <div id="reviewButtons" class="review-buttons hidden"></div>
+    <div id="importError" class="import-error hidden"></div>
+
+</div>
+
+<!-- 統計パネル -->
+<div id="statsPanel" class="stats-panel hidden" aria-hidden="true">
+    <div class="stats-panel-inner">
+        <div class="stats-panel-header">
+            <h2>単語統計</h2>
+            <button id="statsPanelClose" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="stats-sort-bar">
+            <label for="statsSort">並び替え:</label>
+            <select id="statsSort">
+                <option value="accuracyAsc">正答率が低い順</option>
+                <option value="wrongDesc">ミス回数順</option>
+                <option value="timeDesc">回答時間が長い順</option>
+            </select>
+        </div>
+        <div id="statsTableWrap" class="stats-table-wrap">
+            <table id="statsTable">
+                <thead>
+                    <tr>
+                        <th>英語</th>
+                        <th>日本語</th>
+                        <th>正答率</th>
+                        <th>正解</th>
+                        <th>不正解</th>
+                        <th>平均回答(秒)</th>
+                        <th>★</th>
+                    </tr>
+                </thead>
+                <tbody id="statsTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="words.js"></script>
+<script src="script.js"></script>
+<script type="module" src="supabase_app_integration.js"></script>
+
+</body>
+</html>
