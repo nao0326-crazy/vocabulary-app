@@ -1292,13 +1292,15 @@ const App = {
         UIManager.init();
         UIManager.initStatsPanel(); // UIManagerのメソッドを直接呼び出す
 
-        // 非同期で Supabase 初期化を試みる（なければスキップ）。StorageManager の挙動は変更しない。
+        // Supabase 初期化を試みる（なければスキップ）。ここでは完了を待ってから続行して同期を確実に行う
         try {
-            initSupabaseClientAndTest().then(client => {
-                if (client) {
-                    console.info('Supabase client initialized');
-                }
-            }).catch(e => { console.warn('Supabase init promise rejected', e); });
+            const client = await initSupabaseClientAndTest();
+            if (client) {
+                console.info('Supabase client initialized (awaited)');
+                window.supabaseClient = client;
+            } else {
+                console.info('Supabase client not initialized; proceeding with local-only mode');
+            }
         } catch (e) { console.warn('Supabase init error', e); }
 
         // Try to fetch words from Supabase before proceeding. If it fails, fallback to local words.js
@@ -1353,94 +1355,167 @@ const App = {
         this.startQuestion();
     },
 
-    /**
-     * イベントリスナーを登録
-     */
-    bindEvents() {
-        if (UIManager.elements.answer) {
-            UIManager.elements.answer.addEventListener("keydown", (e) => {
-                if (e.key === "Enter") {
-                    this.handleAnswer();
-                }
-            });
+     /**
+      * イベントリスナーを登録
+      */
+     bindEvents() {
+         // typing pause settings
+         this._typingTimeout = null;
+         this._typingIdleMs = 2000; // ミリ秒: 入力停止後にタイマーを再開
+         this._isComposing = false;
 
-            // 入力にフォーカスしたらタイマーを停止（入力中はカウントダウンしない）
-            UIManager.elements.answer.addEventListener('focus', () => {
-                if (this.isAnswering) return;
-                try {
-                    // 記録用に一時停止時刻を保存
-                    this._pauseTimestamp = Date.now();
-                    TimerManager.stop();
-                } catch (e) { /* ignore */ }
-            });
+         if (UIManager.elements.answer) {
+             UIManager.elements.answer.addEventListener("keydown", (e) => {
+                 if (e.key === "Enter") {
+                     this.handleAnswer();
+                 }
+             });
 
-            // 入力からフォーカスが外れたらタイマーを再開（残り時間を維持）
-            UIManager.elements.answer.addEventListener('blur', () => {
-                if (this.isAnswering) return;
-                try {
-                    // 質問開始時刻にポーズ期間を足して学習時間計測を補正
-                    if (this._pauseTimestamp && this.quizState && this.quizState.questionStartTime) {
-                        const pausedDuration = Date.now() - this._pauseTimestamp;
-                        this.quizState.questionStartTime += pausedDuration;
-                        this._pauseTimestamp = null;
-                    }
+             // 入力にフォーカスしたらタイマーを停止（入力中はカウントダウンしない）
+             UIManager.elements.answer.addEventListener('focus', () => {
+                 if (this.isAnswering) return;
+                 try {
+                     // 記録用に一時停止時刻を保存
+                     this._pauseTimestamp = Date.now();
+                     TimerManager.stop();
+                 } catch (e) { /* ignore */ }
+             });
 
-                    // 再開：残り時間がある場合はそのまま開始、残っていなければ開始しない
-                    const remaining = TimerManager.getTimeLeft();
-                    const startSeconds = (typeof remaining === 'number' && remaining > 0) ? remaining : TIMER_SECONDS;
-                    TimerManager.start(
-                        (seconds) => UIManager.updateTimer(seconds),
-                        () => this.handleTimeout(),
-                        startSeconds
-                    );
-                } catch (e) { /* ignore */ }
-            });
-        }
+             // composition (IME) 開始/終了を扱う
+             UIManager.elements.answer.addEventListener('compositionstart', () => {
+                 this._isComposing = true;
+                 if (this.isAnswering) return;
+                 try {
+                     this._pauseTimestamp = this._pauseTimestamp || Date.now();
+                     TimerManager.stop();
+                     this._clearTypingTimeout();
+                 } catch (e) { /* ignore */ }
+             });
+             UIManager.elements.answer.addEventListener('compositionend', () => {
+                 this._isComposing = false;
+                 if (this.isAnswering) return;
+                 // 入力確定後、アイドルを待って再開
+                 this._pauseTimestamp = this._pauseTimestamp || Date.now();
+                 this._scheduleResumeTimer();
+             });
 
-        if (UIManager.elements.submitButton) {
-            UIManager.elements.submitButton.addEventListener("click", () => {
-                this.handleAnswer();
-            });
-        }
+             // 実際の入力イベント（キー入力や貼り付け）でタイマーを停止し、入力が止まったら再開
+             UIManager.elements.answer.addEventListener('input', () => {
+                 if (this.isAnswering) return;
+                 try {
+                     // stop timer on any input and set pause timestamp if not set
+                     this._pauseTimestamp = this._pauseTimestamp || Date.now();
+                     TimerManager.stop();
+                     // schedule resume after idle
+                     this._scheduleResumeTimer();
+                 } catch (e) { /* ignore */ }
+             });
 
-        // お気に入りボタンのイベントリスナー
-        if (UIManager.elements.favoriteButton) {
-            UIManager.elements.favoriteButton.addEventListener("click", () => {
-                this.handleFavoriteToggle();
-            });
-        }
+             // 入力からフォーカスが外れたら即座にタイマーを再開（残り時間を維持）
+             UIManager.elements.answer.addEventListener('blur', () => {
+                 if (this.isAnswering) return;
+                 try {
+                     // cancel any scheduled resume and resume immediately
+                     this._clearTypingTimeout();
+                     this._resumeTimerFromPause();
+                 } catch (e) { /* ignore */ }
+             });
+         }
 
-        // クイズモード変更時は新しいモードで再スタート
-        // UIManager may have cached quizMode; fallback to element lookup
-        const modeEl = UIManager.elements.quizMode || document.getElementById('quizMode');
-        if (modeEl) {
-            modeEl.addEventListener('change', (e) => {
-                const mode = e.target.value;
-                this.startNewQuiz(mode);
-            });
-        }
+         if (UIManager.elements.submitButton) {
+             UIManager.elements.submitButton.addEventListener("click", () => {
+                 this.handleAnswer();
+             });
+         }
 
-        // エクスポートボタン
-        const exportBtn = document.getElementById('exportBtn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => {
-                this.handleExport();
-            });
-        }
+         // お気に入りボタンのイベントリスナー
+         if (UIManager.elements.favoriteButton) {
+             UIManager.elements.favoriteButton.addEventListener("click", () => {
+                 this.handleFavoriteToggle();
+             });
+         }
 
-        // ESC押下でスキップ（統計パネルが開いている場合はそちらのハンドラに任せる）
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                const statsPanel = UIManager.statsElements && UIManager.statsElements.statsPanel;
-                if (statsPanel && !statsPanel.classList.contains('hidden')) {
-                    // stats panel handler will close it; do nothing here
-                    return;
-                }
-                // Skip current question if possible
-                this.handleSkip();
-            }
-        });
-    },
+         // クイズモード変更時は新しいモードで再スタート
+         // UIManager may have cached quizMode; fallback to element lookup
+         const modeEl = UIManager.elements.quizMode || document.getElementById('quizMode');
+         if (modeEl) {
+             modeEl.addEventListener('change', (e) => {
+                 const mode = e.target.value;
+                 this.startNewQuiz(mode);
+             });
+         }
+
+         // エクスポートボタン
+         const exportBtn = document.getElementById('exportBtn');
+         if (exportBtn) {
+             exportBtn.addEventListener('click', () => {
+                 this.handleExport();
+             });
+         }
+
+         // ESC押下でスキップ（統計パネルが開いている場合はそちらのハンドラに任せる）
+         document.addEventListener('keydown', (e) => {
+             if (e.key === 'Escape') {
+                 const statsPanel = UIManager.statsElements && UIManager.statsElements.statsPanel;
+                 if (statsPanel && !statsPanel.classList.contains('hidden')) {
+                     // stats panel handler will close it; do nothing here
+                     return;
+                 }
+                 // Skip current question if possible
+                 this.handleSkip();
+             }
+         });
+     },
+
+     _clearTypingTimeout() {
+         try {
+             if (this._typingTimeout) {
+                 clearTimeout(this._typingTimeout);
+                 this._typingTimeout = null;
+             }
+         } catch (e) { /* ignore */ }
+     },
+
+     /**
+      * スケジュールされた再開処理をセット
+      */
+     _scheduleResumeTimer() {
+         this._clearTypingTimeout();
+         this._typingTimeout = setTimeout(() => {
+             this._typingTimeout = null;
+             try {
+                 this._resumeTimerFromPause();
+             } catch (e) { /* ignore */ }
+         }, this._typingIdleMs);
+     },
+
+     /**
+      * ポーズ開始時刻から学習時間補正をしてタイマーを再開する
+      */
+     _resumeTimerFromPause() {
+         try {
+             if (this._pauseTimestamp && this.quizState && this.quizState.questionStartTime) {
+                 const pausedDuration = Date.now() - this._pauseTimestamp;
+                 this.quizState.questionStartTime += pausedDuration;
+             }
+             this._pauseTimestamp = null;
+
+             const remaining = TimerManager.getTimeLeft();
+             const startSeconds = (typeof remaining === 'number' && remaining > 0) ? remaining : TIMER_SECONDS;
+             // only start if there's time left
+             if (startSeconds > 0) {
+                 TimerManager.start(
+                     (seconds) => UIManager.updateTimer(seconds),
+                     () => this.handleTimeout(),
+                     startSeconds
+                 );
+             } else {
+                 // no time left, call timeout immediately
+                 setTimeout(() => this.handleTimeout(), 0);
+             }
+         } catch (e) { /* ignore */ }
+     },
+
 
     /**
      * 問題開始
@@ -1510,6 +1585,8 @@ const App = {
         TimerManager.stop();
         // clear any pause marker
         this._pauseTimestamp = null;
+        // clear any scheduled typing resume
+        try { this._clearTypingTimeout(); } catch (e) { /* ignore */ }
         this.recordElapsedTime();
 
         const userInput = UIManager.elements.answer ? UIManager.elements.answer.value : "";
@@ -1572,6 +1649,8 @@ const App = {
         TimerManager.stop();
         // clear any pause marker
         this._pauseTimestamp = null;
+        // clear any scheduled typing resume
+        try { this._clearTypingTimeout(); } catch (e) { /* ignore */ }
         this.recordElapsedTime();
 
         const correctText = QuizManager.getCorrectAnswerText(this.quizState);
@@ -1597,6 +1676,8 @@ const App = {
         this.isAnswering = true;
         // clear any pause marker
         this._pauseTimestamp = null;
+        // clear any scheduled typing resume
+        try { this._clearTypingTimeout(); } catch (e) { /* ignore */ }
         this.recordElapsedTime();
 
         this.sessionStats.wrong++;
