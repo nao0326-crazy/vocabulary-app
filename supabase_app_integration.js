@@ -1,7 +1,23 @@
 import { initSupabase } from './supabase_init.js';
-import { RemoteAdapterSupabaseClient } from './remoteAdapterSupabase.client.js';
-import { StorageManagerClient } from './storageManager.client.js';
-import { SyncManagerClient } from './syncManager.client.js';
+
+// Optional client modules are dynamically imported at runtime to avoid 404s on static deployments
+// They provide enhanced sync functionality. If missing, the app will continue in local-only mode.
+async function tryLoadClientModules() {
+  const mods = {};
+  try {
+    const r = await import('./remoteAdapterSupabase.client.js');
+    mods.RemoteAdapterSupabaseClient = r.RemoteAdapterSupabaseClient || r.default;
+  } catch (e) { console.warn('Optional module remoteAdapterSupabase.client.js not available:', e); }
+  try {
+    const s = await import('./storageManager.client.js');
+    mods.StorageManagerClient = s.StorageManagerClient || s.default;
+  } catch (e) { console.warn('Optional module storageManager.client.js not available:', e); }
+  try {
+    const sm = await import('./syncManager.client.js');
+    mods.SyncManagerClient = sm.SyncManagerClient || sm.default;
+  } catch (e) { console.warn('Optional module syncManager.client.js not available:', e); }
+  return mods;
+}
 
 // Expect SUPABASE_URL and SUPABASE_KEY to be set on window (or via env injection)
 const SUPABASE_URL = window.SUPABASE_URL || null;
@@ -47,10 +63,20 @@ function showUser(user) {
 async function initializeAfterLogin(user) {
   setSyncStatus('同期待機');
   try {
+    // Attempt to load optional client modules
+    const mods = await tryLoadClientModules();
+    if (!mods.RemoteAdapterSupabaseClient || !mods.StorageManagerClient || !mods.SyncManagerClient) {
+      console.warn('One or more client modules are missing; sync features will be disabled');
+      setSyncStatus('同期不可');
+      // Still reflect UI and expose minimal storage via existing global StorageManager if present
+      showUser(user);
+      return;
+    }
+
     // create adapters and managers
-    remoteAdapter = new RemoteAdapterSupabaseClient(supabase);
-    syncManager = new SyncManagerClient(remoteAdapter, { onRemoteMerge: async (merged) => await applyRemoteMerge(merged) });
-    storageManager = new StorageManagerClient({ syncManager });
+    remoteAdapter = new mods.RemoteAdapterSupabaseClient(supabase);
+    syncManager = new mods.SyncManagerClient(remoteAdapter, { onRemoteMerge: async (merged) => await applyRemoteMerge(merged) });
+    storageManager = new mods.StorageManagerClient({ syncManager });
 
     // load local data
     await storageManager.load();

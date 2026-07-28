@@ -1286,6 +1286,73 @@ const App = {
     },
 
     /**
+     * App-level: 起動時に Supabase の word_stats を取得して localStorage の storageData に反映する
+     * Supabase 側のデータを優先して上書きする
+     */
+    async syncWordStatsFromSupabase() {
+        try {
+            const client = window.supabaseClient;
+            if (!client) {
+                console.info('No supabase client available for syncing word_stats');
+                return;
+            }
+
+            const userId = 'nao';
+            const { data, error } = await client
+                .from('word_stats')
+                .select('word, correct_count, wrong_count')
+                .eq('user_id', userId);
+
+            if (error) {
+                console.warn('Supabase select error when syncing word_stats:', error);
+                return;
+            }
+
+            if (!Array.isArray(data) || data.length === 0) {
+                console.info('No remote word_stats rows to sync');
+                return;
+            }
+
+            // Ensure storageData is loaded
+            if (!this.storageData) this.storageData = StorageManager.load();
+
+            // Apply remote data (Supabase優先)
+            data.forEach(row => {
+                const key = row.word || '';
+                if (!key) return;
+                StorageManager.ensureWordStat(this.storageData, key);
+                const stat = this.storageData.wordStats[key];
+                stat.correct = Number(row.correct_count || 0);
+                stat.wrong = Number(row.wrong_count || 0);
+                // 保守的に consecutiveCorrect は保持しないで0にリセット
+                stat.consecutiveCorrect = 0;
+                // isWeak を判定する簡易ルール（誤答が正答を上回る場合を苦手とみなす）
+                stat.isWeak = (stat.wrong > stat.correct);
+            });
+
+            // Recalculate aggregate totals
+            let totalCorrect = 0;
+            let totalWrong = 0;
+            Object.values(this.storageData.wordStats).forEach(s => {
+                totalCorrect += (Number(s.correct) || 0);
+                totalWrong += (Number(s.wrong) || 0);
+            });
+            this.storageData.totalCorrect = totalCorrect;
+            this.storageData.totalWrong = totalWrong;
+
+            // Persist merged data locally
+            StorageManager.save(this.storageData);
+
+            // Update UI if ready
+            try { UIManager.updateOverallStats(this.storageData); } catch (e) { /* ignore UI errors */ }
+
+            console.info('Synced word_stats from Supabase:', data.length, 'rows');
+        } catch (e) {
+            console.warn('syncWordStatsFromSupabase failed:', e);
+        }
+    },
+
+    /**
      * アプリ初期化
      */
     async init() {
@@ -1310,12 +1377,19 @@ const App = {
 
         this.storageData = StorageManager.load();
 
-        // Supabase側のword_statsがあればローカルに同期（Supabase優先）
+            // Supabase側のword_statsがあればローカルに同期（Supabase優先）
         try {
-            await this.syncWordStatsFromSupabase();
-        } catch (e) {
-            console.warn('syncWordStatsFromSupabase failed:', e);
-        }
+                if (typeof this.syncWordStatsFromSupabase === 'function') {
+                    await this.syncWordStatsFromSupabase();
+                } else if (typeof StorageManager.syncWordStatsFromSupabase === 'function') {
+                    // legacy fallback: call StorageManager implementation if present
+                    await StorageManager.syncWordStatsFromSupabase();
+                } else {
+                    console.info('No syncWordStatsFromSupabase implementation found; skipping remote sync');
+                }
+            } catch (e) {
+                console.warn('syncWordStatsFromSupabase failed:', e);
+            }
 
         // words配列の存在チェック
         if (typeof words === 'undefined' || !Array.isArray(words) || words.length === 0) {
