@@ -1274,6 +1274,14 @@ const App = {
             // Replace global words only if mapped has at least one valid entry
             const valid = mapped.filter(w => w.english && w.japanese);
             if (valid.length > 0) {
+                // If a local words.js provides entries, prefer local by default unless forced
+                const hasLocalWords = (typeof words !== 'undefined' && Array.isArray(words) && words.length > 0) || (window.words && Array.isArray(window.words) && window.words.length > 0);
+                const forceRemote = !!window.FORCE_SUPABASE_WORDS;
+                if (hasLocalWords && !forceRemote) {
+                    console.info('Supabase returned words but local words.js is present. Keeping local words. Set window.FORCE_SUPABASE_WORDS = true to override.');
+                    return true; // treat as success but do not overwrite local words
+                }
+
                 window.words = mapped;
                 console.info('Loaded words from Supabase:', mapped.length);
                 return true;
@@ -1562,20 +1570,28 @@ const App = {
              const menuToggle = document.getElementById('menuToggle');
              const headerActions = document.getElementById('headerActions');
              if (menuToggle && headerActions) {
-                 menuToggle.addEventListener('click', (e) => {
-                     e.stopPropagation();
+                 // Unified handler used for click/touch/pointer events to support in-app browsers like LINE
+                 const toggleMenu = (e) => {
+                     try {
+                         e && e.stopPropagation && e.stopPropagation();
+                     } catch (ex) { /* ignore */ }
                      headerActions.classList.toggle('is-open');
                      const expanded = headerActions.classList.contains('is-open');
-                     menuToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                 });
+                     try { menuToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false'); } catch(e){}
+                 };
 
-                 // Close the menu when tapping outside on mobile
+                 // Click (desktop) and pointerdown/touchstart (mobile/in-app) support
+                 menuToggle.addEventListener('click', toggleMenu);
+                 menuToggle.addEventListener('pointerdown', (e) => { toggleMenu(e); });
+                 menuToggle.addEventListener('touchstart', (e) => { toggleMenu(e); }, { passive: true });
+
+                 // Close the menu when tapping outside on mobile/desktop
                  document.addEventListener('click', (e) => {
                      if (!headerActions.classList.contains('is-open')) return;
                      if (e.target === menuToggle) return;
                      if (!headerActions.contains(e.target)) {
                          headerActions.classList.remove('is-open');
-                         menuToggle.setAttribute('aria-expanded', 'false');
+                         try { menuToggle.setAttribute('aria-expanded', 'false'); } catch(e){}
                      }
                  });
              }
