@@ -771,6 +771,8 @@ const TimerManager = {
     intervalId: null,
     timeLeft: TIMER_SECONDS,
     onTimeout: null,
+    isPaused: false,
+    pausedStartTime: null,
 
     /**
      * タイマーを開始
@@ -781,6 +783,46 @@ const TimerManager = {
         // initialSeconds が指定されていればそれを使い、そうでなければデフォルトにリセット
         this.stop();
         this.timeLeft = (typeof initialSeconds === 'number' && initialSeconds > 0) ? Math.floor(initialSeconds) : TIMER_SECONDS;
+        this.onTimeout = onTimeout;
+        this.isPaused = false;
+        this.pausedStartTime = null;
+        onTick(this.timeLeft);
+
+        this.intervalId = setInterval(() => {
+            this.timeLeft--;
+            onTick(this.timeLeft);
+
+            if (this.timeLeft <= 0) {
+                this.stop();
+                if (this.onTimeout) {
+                    this.onTimeout();
+                }
+            }
+        }, 1000);
+    },
+
+    /**
+     * タイマーを一時停止
+     */
+    pause() {
+        if (!this.isPaused && this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+            this.isPaused = true;
+            this.pausedStartTime = Date.now();
+        }
+    },
+
+    /**
+     * 一時停止したタイマーを再開
+     * @param {function} onTick - 残り秒数コールバック
+     * @param {function} onTimeout - 時間切れコールバック
+     */
+    resume(onTick, onTimeout) {
+        if (!this.isPaused) return;
+        
+        this.isPaused = false;
+        this.pausedStartTime = null;
         this.onTimeout = onTimeout;
         onTick(this.timeLeft);
 
@@ -795,6 +837,13 @@ const TimerManager = {
                 }
             }
         }, 1000);
+    },
+
+    /**
+     * 一時停止状態かどうかを返す
+     */
+    getIsPaused() {
+        return this.isPaused;
     },
 
     /**
@@ -813,6 +862,8 @@ const TimerManager = {
             clearInterval(this.intervalId);
             this.intervalId = null;
         }
+        this.isPaused = false;
+        this.pausedStartTime = null;
     }
 };
 
@@ -1274,12 +1325,31 @@ const App = {
             // Replace global words only if mapped has at least one valid entry
             const valid = mapped.filter(w => w.english && w.japanese);
             if (valid.length > 0) {
-                // If a local words.js provides entries, prefer local by default unless forced
+                // If local words.js provides entries, merge local and remote by default (local overrides remote for duplicates).
                 const hasLocalWords = (typeof words !== 'undefined' && Array.isArray(words) && words.length > 0) || (window.words && Array.isArray(window.words) && window.words.length > 0);
                 const forceRemote = !!window.FORCE_SUPABASE_WORDS;
                 if (hasLocalWords && !forceRemote) {
-                    console.info('Supabase returned words but local words.js is present. Keeping local words. Set window.FORCE_SUPABASE_WORDS = true to override.');
-                    return true; // treat as success but do not overwrite local words
+                    try {
+                        const localArray = (typeof words !== 'undefined' && Array.isArray(words)) ? words : (Array.isArray(window.words) ? window.words : []);
+                        const remoteArray = mapped;
+                        const map = new Map();
+                        // insert remote first
+                        for (const r of remoteArray) {
+                            if (r && r.english) map.set(String(r.english).trim(), { english: String(r.english).trim(), japanese: String(r.japanese || '').trim() });
+                        }
+                        // overlay local (local wins on key conflict)
+                        for (const l of localArray) {
+                            if (!l || !l.english) continue;
+                            map.set(String(l.english).trim(), { english: String(l.english).trim(), japanese: String(l.japanese || l.answers ? (Array.isArray(l.answers) ? l.answers.join(', ') : l.answers) : '').trim() });
+                        }
+                        const merged = Array.from(map.values());
+                        window.words = merged;
+                        console.info(`Merged words: remote=${remoteArray.length}, local=${localArray.length} => total=${merged.length}`);
+                        return true;
+                    } catch (e) {
+                        console.warn('Failed to merge local and remote words; falling back to local words only', e);
+                        return true;
+                    }
                 }
 
                 window.words = mapped;
@@ -1542,6 +1612,32 @@ const App = {
              });
          }
 
+         // Pause/Resume button for manual user control
+         try {
+             const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+             if (pauseResumeBtn) {
+                 pauseResumeBtn.addEventListener('click', () => {
+                     if (this.isAnswering) return;
+                     if (TimerManager.getIsPaused()) {
+                         // Resume
+                         TimerManager.resume(
+                             (seconds) => UIManager.updateTimer(seconds),
+                             () => this.handleTimeout()
+                         );
+                         pauseResumeBtn.textContent = '⏸';
+                         pauseResumeBtn.title = '一時停止';
+                         pauseResumeBtn.setAttribute('aria-label', '一時停止');
+                     } else {
+                         // Pause
+                         TimerManager.pause();
+                         pauseResumeBtn.textContent = '▶';
+                         pauseResumeBtn.title = '再開';
+                         pauseResumeBtn.setAttribute('aria-label', '再開');
+                     }
+                 });
+             }
+         } catch (e) { /* ignore */ }
+
          if (UIManager.elements.submitButton) {
              UIManager.elements.submitButton.addEventListener("click", () => {
                  this.handleAnswer();
@@ -1617,6 +1713,28 @@ const App = {
                  this.handleSkip();
              }
          });
+
+         // Auto-pause timer when page is hidden (backgrounded) or visibility changes
+         try {
+             document.addEventListener('visibilitychange', () => {
+                 if (this.isAnswering) return;
+                 if (document.hidden) {
+                     // Page backgrounded or tab hidden
+                     if (!TimerManager.getIsPaused()) {
+                         TimerManager.pause();
+                         const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+                         if (pauseResumeBtn) {
+                             pauseResumeBtn.textContent = '▶';
+                             pauseResumeBtn.title = '再開';
+                         }
+                         console.info('Timer auto-paused: page backgrounded');
+                     }
+                 } else {
+                     // Page restored to foreground (optional auto-resume; can be left paused for user to resume)
+                     console.info('Page restored: timer remains paused until user clicks resume');
+                 }
+             });
+         } catch (e) { /* ignore */ }
      },
 
      _clearTypingTimeout() {
@@ -1702,6 +1820,16 @@ const App = {
             const isFavorite = StorageManager.isFavorite(this.storageData, currentWord.english);
             UIManager.updateFavoriteButton(isFavorite);
         }
+
+        // Reset pause/resume button UI to initial state
+        try {
+            const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+            if (pauseResumeBtn) {
+                pauseResumeBtn.textContent = '⏸';
+                pauseResumeBtn.title = '一時停止';
+                pauseResumeBtn.setAttribute('aria-label', '一時停止');
+            }
+        } catch (e) { /* ignore */ }
 
         TimerManager.start(
             (seconds) => UIManager.updateTimer(seconds),

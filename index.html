@@ -4,7 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>英単語アプリ</title>
-    <link rel="stylesheet" href="style.css">
+    <link id="mainCss" rel="stylesheet" href="style.css">
+    <script>
+      // Fallback loader for style.css to reduce 404 issues on GitHub Pages.
+      (function(){
+        const link = document.getElementById('mainCss');
+        if (!link) return;
+        let tried = new Set();
+        function tryLoad(href) {
+          if (tried.has(href)) return false;
+          tried.add(href);
+          const l = document.createElement('link');
+          l.rel = 'stylesheet';
+          l.href = href;
+          l.onload = function(){ console.info('Loaded stylesheet:', href); };
+          l.onerror = function(){ console.warn('Failed to load stylesheet:', href); };
+          document.head.appendChild(l);
+          return true;
+        }
+
+        // If initial link fails, attempt a few common fallbacks after window load
+        link.onerror = function(){
+          console.warn('Primary stylesheet failed to load, attempting fallbacks');
+          // 1) try ./style.css
+          tryLoad('./style.css');
+          // 2) try docs/style.css (used when Pages is configured to /docs)
+          tryLoad('./docs/style.css');
+          // 3) try assets/style.css
+          tryLoad('./assets/style.css');
+        };
+
+        // In some environments link.onerror may not fire; check after load event
+        window.addEventListener('load', function(){
+          const found = Array.from(document.styleSheets).some(s => s && s.href && s.href.endsWith('/style.css'));
+          if (!found) {
+            console.warn('style.css not detected in document.styleSheets; attempting fallback paths');
+            tryLoad('./style.css');
+            tryLoad('./docs/style.css');
+            tryLoad('./assets/style.css');
+          }
+        });
+      })();
+    </script>
     <!-- Supabase config (put your anon public key here) -->
     <script>
         window.SUPABASE_URL = 'https://simghlfrqspeuipzpdrf.supabase.co';
@@ -64,7 +105,10 @@
 
     <div id="direction">—</div>
 
-    <div id="timer">5</div>
+    <div class="timer-area">
+        <div id="timer">5</div>
+        <button id="pauseResumeBtn" type="button" class="pause-resume-btn" title="一時停止/再開" aria-label="一時停止">⏸</button>
+    </div>
 
     <div class="question-row">
         <div id="question">Loading...</div>
